@@ -195,6 +195,12 @@ export function FinancialsPage() {
               render: (v) => formatDateTime(v as string),
             },
             {
+              key: 'paymentType' as keyof typeof settlements[0],
+              header: 'Payment Type',
+              sortable: true,
+              align: 'center',
+            },
+            {
               key: 'amount' as keyof typeof settlements[0],
               header: 'Settlement Amount',
               sortable: true,
@@ -396,7 +402,10 @@ function computePromoKpi(records: ConsolidatedRecord[]) {
 }
 
 function computeSettlements(records: ConsolidatedRecord[]) {
-  const bySettlement: Record<string, { id: string; date: string; amount: number }> = {};
+  const bySettlement: Record<
+    string,
+    { id: string; date: string; amount: number; paymentTypes: Set<string> }
+  > = {};
 
   for (const r of records) {
     const sid = r.settlement_id ?? 'Unknown';
@@ -405,10 +414,25 @@ function computeSettlements(records: ConsolidatedRecord[]) {
         id: sid,
         date: r.deposit_date ?? 'N/A',
         amount: 0,
+        paymentTypes: new Set<string>(),
       };
     }
     bySettlement[sid].amount += r.total ?? 0;
+    if (r.payment_type) {
+      bySettlement[sid].paymentTypes.add(r.payment_type);
+    }
   }
 
-  return Object.values(bySettlement).sort((a, b) => b.date.localeCompare(a.date));
+  return Object.values(bySettlement)
+    .map((s) => {
+      const types = Array.from(s.paymentTypes).filter(Boolean);
+      const paymentTypeStr = types.length > 0 ? types.join(' & ') : 'N/A';
+      return {
+        id: s.id,
+        date: s.date,
+        amount: s.amount,
+        paymentType: paymentTypeStr,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
