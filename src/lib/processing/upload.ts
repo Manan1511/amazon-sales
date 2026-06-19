@@ -111,13 +111,24 @@ export async function uploadToSupabase(
   let mtrRowsResolved = 0;
   if (unmatchedMtrOrderIds.length > 0) {
     onProgress('Reconciling with database settlements...', 12, 'Checking database for previous settlements...');
-    const { data: dbSettlements, error: dbError } = await supabase
-      .from('consolidated_records')
-      .select('id, order_id, charges, tcs_igst, tds, promos, settlement_id, deposit_date')
-      .in('order_id', unmatchedMtrOrderIds)
-      .like('invoice_no', 'SETTLEMENT-ONLY-%');
+    
+    // Chunk queries to avoid Supabase URL length limits
+    const CHUNK_SIZE = 300;
+    const dbSettlements: any[] = [];
+    for (let i = 0; i < unmatchedMtrOrderIds.length; i += CHUNK_SIZE) {
+      const chunk = unmatchedMtrOrderIds.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from('consolidated_records')
+        .select('id, order_id, charges, tcs_igst, tds, promos, settlement_id, deposit_date')
+        .in('order_id', chunk)
+        .like('invoice_no', 'SETTLEMENT-ONLY-%');
+        
+      if (!error && data) {
+        dbSettlements.push(...data);
+      }
+    }
 
-    if (!dbError && dbSettlements && dbSettlements.length > 0) {
+    if (dbSettlements.length > 0) {
       const dbSettlementsMap = new Map<string, typeof dbSettlements[0]>();
       for (const ds of dbSettlements) {
         if (ds.order_id) {
@@ -170,13 +181,22 @@ export async function uploadToSupabase(
     onProgress('Reconciling with database invoices...', 14, 'Checking database for previous invoices...');
     const unmatchedSettlementOrderIds = unmatchedSettlements.map((s) => s.orderId);
 
-    const { data: dbMtrRows, error: dbMtrError } = await supabase
-      .from('consolidated_records')
-      .select('id, order_id, invoice_amount')
-      .in('order_id', unmatchedSettlementOrderIds)
-      .not('invoice_no', 'like', 'SETTLEMENT-ONLY-%');
+    const CHUNK_SIZE = 300;
+    const dbMtrRows: any[] = [];
+    for (let i = 0; i < unmatchedSettlementOrderIds.length; i += CHUNK_SIZE) {
+      const chunk = unmatchedSettlementOrderIds.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from('consolidated_records')
+        .select('id, order_id, invoice_amount')
+        .in('order_id', chunk)
+        .not('invoice_no', 'like', 'SETTLEMENT-ONLY-%');
+        
+      if (!error && data) {
+        dbMtrRows.push(...data);
+      }
+    }
 
-    if (!dbMtrError && dbMtrRows && dbMtrRows.length > 0) {
+    if (dbMtrRows.length > 0) {
       const dbMtrMap = new Map<string, typeof dbMtrRows>();
       for (const dr of dbMtrRows) {
         if (dr.order_id) {
@@ -318,29 +338,40 @@ export async function uploadToSupabase(
   // Phase C: Write updates to database for reconciled rows
   if (updatedRecords.length > 0) {
     onProgress('Updating database matching records...', 85, `Reconciling ${updatedRecords.length} database invoices...`);
-    for (const ur of updatedRecords) {
-      await supabase
-        .from('consolidated_records')
-        .update({
-          charges: ur.charges,
-          tcs_igst: ur.tcs_igst,
-          tds: ur.tds,
-          promos: ur.promos,
-          total: ur.total,
-          settlement_id: ur.settlement_id,
-          deposit_date: ur.deposit_date,
-        })
-        .eq('id', ur.id);
+    
+    const UPDATE_BATCH_SIZE = 100;
+    for (let i = 0; i < updatedRecords.length; i += UPDATE_BATCH_SIZE) {
+      const batch = updatedRecords.slice(i, i + UPDATE_BATCH_SIZE);
+      await Promise.all(
+        batch.map((ur) =>
+          supabase
+            .from('consolidated_records')
+            .update({
+              charges: ur.charges,
+              tcs_igst: ur.tcs_igst,
+              tds: ur.tds,
+              promos: ur.promos,
+              total: ur.total,
+              settlement_id: ur.settlement_id,
+              deposit_date: ur.deposit_date,
+            })
+            .eq('id', ur.id)
+        )
+      );
     }
   }
 
   // Phase D: Delete matched settlement-only rows from database
   if (deletedSettlementOnlyIds.length > 0) {
     onProgress('Cleaning up temporary records...', 90, `Deleting ${deletedSettlementOnlyIds.length} matched temporary records...`);
-    await supabase
-      .from('consolidated_records')
-      .delete()
-      .in('id', deletedSettlementOnlyIds);
+    const DELETE_CHUNK_SIZE = 300;
+    for (let i = 0; i < deletedSettlementOnlyIds.length; i += DELETE_CHUNK_SIZE) {
+      const chunk = deletedSettlementOnlyIds.slice(i, i + DELETE_CHUNK_SIZE);
+      await supabase
+        .from('consolidated_records')
+        .delete()
+        .in('id', chunk);
+    }
   }
 
   // Step 7.4 — Delete existing fee records

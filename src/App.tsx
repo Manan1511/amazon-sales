@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { PeriodProvider } from './context/PeriodContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PlatformProvider } from './context/PlatformContext';
+import { usePlatform } from './context/PlatformContext';
 import { Layout } from './components/layout/Layout';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -14,6 +16,7 @@ import './App.css';
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
+  const { platform } = usePlatform();
 
   if (isLoading) {
     return <PageLoader />;
@@ -28,9 +31,18 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="products" element={<ProductsPage />} />
-        <Route path="financials" element={<FinancialsPage />} />
-        <Route path="orders" element={<OrdersPage />} />
+        <Route
+          path="products"
+          element={platform === 'shopify' ? <Navigate to="/" replace /> : <ProductsPage />}
+        />
+        <Route
+          path="financials"
+          element={platform === 'shopify' ? <Navigate to="/" replace /> : <FinancialsPage />}
+        />
+        <Route
+          path="orders"
+          element={platform === 'shopify' ? <Navigate to="/" replace /> : <OrdersPage />}
+        />
         
         {/* Admin only routes */}
         <Route
@@ -52,11 +64,13 @@ function AppRoutes() {
 export function App() {
   return (
     <AuthProvider>
-      <PeriodProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </PeriodProvider>
+      <PlatformProvider>
+        <PeriodProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </PeriodProvider>
+      </PlatformProvider>
     </AuthProvider>
   );
 }

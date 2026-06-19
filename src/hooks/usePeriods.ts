@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { usePeriodContext } from '../context/PeriodContext';
+import { usePlatform } from '../context/PlatformContext';
 import type { Period } from '../types';
 
 interface UsePeriodsResult {
@@ -16,6 +17,7 @@ interface UsePeriodsResult {
  */
 export function usePeriods(): UsePeriodsResult {
   const { dispatch } = usePeriodContext();
+  const { platform } = usePlatform();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [periods, setPeriods] = useState<Period[]>([]);
@@ -24,8 +26,9 @@ export function usePeriods(): UsePeriodsResult {
     setLoading(true);
     setError(null);
     try {
+      const table = platform === 'shopify' ? 'shopify_periods' : 'periods';
       const { data, error: dbError } = await supabase
-        .from('periods')
+        .from(table)
         .select('*')
         .order('year', { ascending: false })
         .order('uploaded_at', { ascending: false });
@@ -41,7 +44,7 @@ export function usePeriods(): UsePeriodsResult {
     } finally {
       setLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, platform]);
 
   useEffect(() => {
     void fetch();

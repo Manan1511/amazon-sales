@@ -263,3 +263,88 @@
   font-weight: 600;
   color: var(--color-success);
 }
+
+/* COD Reconciliation Tool */
+.reco-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-8);
+  margin-top: var(--space-8);
+}
+
+.reco-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-6);
+  margin-top: var(--space-4);
+}
+
+.reco-summary-card {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.reco-summary-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.reco-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.reco-summary-item {
+  padding: var(--space-3);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.reco-summary-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.reco-summary-value {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.reco-summary-item--matched { border-left: 3px solid var(--color-success); }
+.reco-summary-item--mismatch { border-left: 3px solid var(--color-warning); }
+.reco-summary-item--not-remitted { border-left: 3px solid var(--color-danger); }
+.reco-summary-item--missing { border-left: 3px solid var(--color-text-muted); }
+
+.reco-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+}
+
+.reco-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-danger-xlight);
+  border: 1px solid var(--color-danger-light);
+  color: var(--color-danger-dark);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+}

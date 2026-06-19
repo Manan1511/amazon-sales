@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { usePeriods } from '../../hooks/usePeriods';
+import { usePlatform } from '../../context/PlatformContext';
 import './Layout.css';
 
 /** Map of route paths to page titles */
@@ -18,10 +19,11 @@ export function Layout() {
   // Fetch periods on app mount — populates PeriodContext
   usePeriods();
   const location = useLocation();
+  const { platform } = usePlatform();
   const title = PAGE_TITLES[location.pathname] ?? 'Dashboard';
 
   // Update document title
-  document.title = `${title} — Amazon Sales Dashboard`;
+  document.title = `${title} — ${platform === 'shopify' ? 'Shopify' : 'Amazon'} Sales Dashboard`;
 
   return (
     <div className="layout">

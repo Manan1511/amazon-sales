@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { ConsolidatedRecord } from '../types';
+import { usePlatform } from '../context/PlatformContext';
 
 /** Supabase default page size */
 const PAGE_SIZE = 1000;
 
 interface UseRecordsResult {
-  records: ConsolidatedRecord[];
+  records: any[];
   loading: boolean;
   error: string | null;
 }
 
 /** Cache keyed by periodId */
-const recordCache = new Map<string, ConsolidatedRecord[]>();
+const recordCache = new Map<string, any[]>();
 
 /**
  * Fetches all consolidated records for the given period.
@@ -20,15 +20,17 @@ const recordCache = new Map<string, ConsolidatedRecord[]>();
  * Results are cached in memory — if the same periodId is requested again, serves from cache.
  */
 export function useRecords(periodId: string | null): UseRecordsResult {
-  const [records, setRecords] = useState<ConsolidatedRecord[]>([]);
+  const { platform } = usePlatform();
+  const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef(false);
 
   const fetchAll = useCallback(async (id: string) => {
     // Serve from cache if available
-    if (recordCache.has(id)) {
-      setRecords(recordCache.get(id)!);
+    const cacheKey = `${platform}_${id}`;
+    if (recordCache.has(cacheKey)) {
+      setRecords(recordCache.get(cacheKey)!);
       setLoading(false);
       return;
     }
@@ -37,7 +39,9 @@ export function useRecords(periodId: string | null): UseRecordsResult {
     setError(null);
     abortRef.current = false;
 
-    const allRows: ConsolidatedRecord[] = [];
+    const allRows: any[] = [];
+    const periodsTable = platform === 'shopify' ? 'shopify_periods' : 'periods';
+    const recordsTable = platform === 'shopify' ? 'shopify_records' : 'consolidated_records';
 
     try {
       let periodIds: string[] = [id];
@@ -48,7 +52,7 @@ export function useRecords(periodId: string | null): UseRecordsResult {
       } else if (id.startsWith('YTD_')) {
         const year = parseInt(id.split('_')[1], 10);
         const { data: matchingPeriods, error: periodsError } = await supabase
-          .from('periods')
+          .from(periodsTable)
           .select('id')
           .eq('year', year);
 
@@ -66,7 +70,7 @@ export function useRecords(periodId: string | null): UseRecordsResult {
 
       // Get count first
       const { count, error: countError } = await supabase
-        .from('consolidated_records')
+        .from(recordsTable)
         .select('*', { count: 'exact', head: true })
         .in('period_id', periodIds);
 
@@ -78,7 +82,7 @@ export function useRecords(periodId: string | null): UseRecordsResult {
         const promises = Array.from({ length: pages }, (_, i) => {
           const fromOffset = i * PAGE_SIZE;
           return supabase
-            .from('consolidated_records')
+            .from(recordsTable)
             .select('*')
             .in('period_id', periodIds)
             .range(fromOffset, fromOffset + PAGE_SIZE - 1);
@@ -87,12 +91,12 @@ export function useRecords(periodId: string | null): UseRecordsResult {
         const responses = await Promise.all(promises);
         for (const res of responses) {
           if (res.error) throw new Error(res.error.message);
-          allRows.push(...((res.data ?? []) as ConsolidatedRecord[]));
+          allRows.push(...(res.data ?? []));
         }
       }
 
       if (!abortRef.current) {
-        recordCache.set(id, allRows);
+        recordCache.set(cacheKey, allRows);
         setRecords(allRows);
       }
     } catch (err) {
@@ -105,13 +109,15 @@ export function useRecords(periodId: string | null): UseRecordsResult {
         setLoading(false);
       }
     }
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
     if (!periodId) {
-      setRecords([]);
-      setLoading(false);
-      setError(null);
+      Promise.resolve().then(() => {
+        setRecords([]);
+        setLoading(false);
+        setError(null);
+      });
       return;
     }
 
@@ -127,7 +133,9 @@ export function useRecords(periodId: string | null): UseRecordsResult {
 
 /** Clears cache for a specific period (call after re-upload) */
 export function invalidateRecordsCache(periodId: string): void {
-  recordCache.delete(periodId);
+  // Clear both amazon and shopify cache keys for this period id
+  recordCache.delete(`amazon_${periodId}`);
+  recordCache.delete(`shopify_${periodId}`);
 }
 
 /** Clears entire cache */

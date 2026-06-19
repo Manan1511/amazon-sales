@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 import { differenceInDays, parseISO, isValid } from 'date-fns';
 import { usePeriodContext } from '../context/PeriodContext';
+import { usePlatform } from '../context/PlatformContext';
 import { useRecords } from '../hooks/useRecords';
 import { KpiCard } from '../components/ui/KpiCard';
 import { DonutChart } from '../components/charts/DonutChart';
 import { BarChart } from '../components/charts/BarChart';
 import { LineChart } from '../components/charts/LineChart';
 import { PageLoader } from '../components/ui/Loader';
-import type { ConsolidatedRecord } from '../types';
 import { formatINR, formatDateTime } from '../utils/format';
 import { getPreviousPeriod, getCompareDetails } from '../utils/compare';
 import {
@@ -24,6 +24,7 @@ import {
   Truck,
   BarChart3,
   Landmark,
+  Tag,
 } from 'lucide-react';
 import './DashboardPage.css';
 
@@ -33,6 +34,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function DashboardPage() {
   const { state } = usePeriodContext();
+  const { platform } = usePlatform();
   const { records, loading } = useRecords(state.selectedPeriod?.id ?? null);
 
   // Load previous period records for period-over-period comparison
@@ -42,20 +44,35 @@ export function DashboardPage() {
 
   const { records: prevRecords } = useRecords(previousPeriod?.id ?? null);
 
-  const kpis = useMemo(() => computeKpis(records), [records]);
-  const prevKpis = useMemo(() => computeKpis(prevRecords), [prevRecords]);
+  const prevPeriodCount = previousPeriod ? 1 : 0;
+  const hasCompare = prevPeriodCount > 0 && prevRecords.length > 0;
 
-  const paymentData = useMemo(() => computePaymentData(records), [records]);
-  const fulfillmentData = useMemo(() => computeFulfillmentData(records), [records]);
-  const transactionData = useMemo(() => computeTransactionData(records), [records]);
-  const gstnData = useMemo(() => computeGstnData(records), [records]);
-  const settlementTrend = useMemo(() => computeSettlementTrend(records), [records]);
-  const dayOfWeekData = useMemo(() => computeDayOfWeekData(records), [records]);
+  // --- SHOPIFY SPECIFIC COMPUTATIONS ---
+  const shopifyData = useMemo(() => {
+    if (platform !== 'shopify') return null;
+    return computeShopifyInsights(records);
+  }, [records, platform]);
+
+  const prevShopifyData = useMemo(() => {
+    if (platform !== 'shopify') return null;
+    return computeShopifyInsights(prevRecords);
+  }, [prevRecords, platform]);
+
+  // --- AMAZON SPECIFIC COMPUTATIONS ---
+  const kpis = useMemo(() => computeKpis(records, platform), [records, platform]);
+  const prevKpis = useMemo(() => computeKpis(prevRecords, platform), [prevRecords, platform]);
+
+  const paymentData = useMemo(() => computePaymentData(records, platform), [records, platform]);
+  const fulfillmentData = useMemo(() => computeFulfillmentData(records, platform), [records, platform]);
+  const transactionData = useMemo(() => computeTransactionData(records, platform), [records, platform]);
+  const gstnData = useMemo(() => computeGstnData(records, platform), [records, platform]);
+  const settlementTrend = useMemo(() => computeSettlementTrend(records, platform), [records, platform]);
+  const dayOfWeekData = useMemo(() => computeDayOfWeekData(records, platform), [records, platform]);
   
-  const extraKpis = useMemo(() => computeExtraKpis(records), [records]);
-  const prevExtraKpis = useMemo(() => computeExtraKpis(prevRecords), [prevRecords]);
+  const extraKpis = useMemo(() => computeExtraKpis(records, platform), [records, platform]);
+  const prevExtraKpis = useMemo(() => computeExtraKpis(prevRecords, platform), [prevRecords, platform]);
 
-  const typeData = useMemo(() => computeTypeData(records), [records]);
+  const typeData = useMemo(() => computeTypeData(records, platform), [records, platform]);
 
   if (!state.selectedPeriod) {
     return (
@@ -75,9 +92,231 @@ export function DashboardPage() {
     return <PageLoader />;
   }
 
-  const prevPeriodCount = previousPeriod ? 1 : 0;
-  const hasCompare = prevPeriodCount > 0 && prevRecords.length > 0;
+  // --- RENDER SHOPIFY DASHBOARD ---
+  if (platform === 'shopify' && shopifyData) {
+    const s = shopifyData;
+    const ps = prevShopifyData;
 
+    return (
+      <div className="dashboard-page shopify-dashboard">
+        {/* KPI Grid */}
+        <section aria-label="Shopify Key Performance Indicators">
+          <div className="kpi-grid">
+            <KpiCard
+              title="Gross Sales"
+              value={formatINR(s.grossSales)}
+              rawValue={s.grossSales}
+              icon={<IndianRupee size={20} />}
+              color="default"
+              {...(hasCompare && ps ? getCompareDetails(s.grossSales, ps.grossSales) : {})}
+            />
+            <KpiCard
+              title="Taxable Amount"
+              value={formatINR(s.taxableAmount)}
+              rawValue={s.taxableAmount}
+              icon={<IndianRupee size={20} />}
+              color="default"
+              {...(hasCompare && ps ? getCompareDetails(s.taxableAmount, ps.taxableAmount) : {})}
+            />
+            <KpiCard
+              title="GST Collected"
+              value={formatINR(s.gstCollected)}
+              rawValue={s.gstCollected}
+              icon={<Landmark size={20} />}
+              color="success"
+              {...(hasCompare && ps ? getCompareDetails(s.gstCollected, ps.gstCollected) : {})}
+            />
+            <KpiCard
+              title="Total Billing (INR)"
+              value={formatINR(s.totalSales)}
+              rawValue={s.totalSales}
+              icon={<IndianRupee size={20} />}
+              color="default"
+              {...(hasCompare && ps ? getCompareDetails(s.totalSales, ps.totalSales) : {})}
+            />
+            <KpiCard
+              title="Total Orders"
+              value={s.orderCount.toLocaleString('en-IN')}
+              rawValue={s.orderCount}
+              icon={<ShoppingCart size={20} />}
+              {...(hasCompare && ps ? getCompareDetails(s.orderCount, ps.orderCount) : {})}
+            />
+            <KpiCard
+              title="Units Shipped"
+              value={s.unitsSold.toLocaleString('en-IN')}
+              rawValue={s.unitsSold}
+              icon={<Package size={20} />}
+              {...(hasCompare && ps ? getCompareDetails(s.unitsSold, ps.unitsSold) : {})}
+            />
+            <KpiCard
+              title="Average Order Value"
+              value={formatINR(s.aov)}
+              rawValue={s.aov}
+              icon={<TrendingUp size={20} />}
+              {...(hasCompare && ps ? getCompareDetails(s.aov, ps.aov) : {})}
+            />
+            <KpiCard
+              title="Shipping & COD Fees"
+              value={formatINR(s.shippingCharges)}
+              rawValue={s.shippingCharges}
+              icon={<Receipt size={20} />}
+              color="warning"
+              {...(hasCompare && ps ? getCompareDetails(s.shippingCharges, ps.shippingCharges) : {})}
+            />
+          </div>
+        </section>
+
+        {/* GST Type & Payment Method row */}
+        <section aria-label="Tax & Payment Insights" className="dashboard-row">
+          {/* GST Collect Split */}
+          <div className="card split-card">
+            <div>
+              <h3 className="section-title"><Landmark size={18} className="inline-icon" /> Intrastate vs Interstate (GST)</h3>
+              <div className="split-list">
+                {s.gstBreakdown.map((g) => (
+                  <div key={g.name} className="split-row">
+                    <span className="split-label">{g.name}</span>
+                    <div className="split-details">
+                      <div className="split-revenue">{formatINR(g.value)}</div>
+                      <div className="split-count">{((g.value / (s.gstCollected || 1)) * 100).toFixed(1)}% of GST</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="split-chart-wrapper">
+              <DonutChart data={s.gstBreakdown} formatter={formatINR} height={180} innerRadius={35} outerRadius={55} showLabels={false} />
+            </div>
+          </div>
+
+          {/* Payment Method Share */}
+          <div className="card split-card">
+            <div>
+              <h3 className="section-title"><CreditCard size={18} className="inline-icon" /> Shopify Payment Share</h3>
+              <div className="split-list">
+                {s.paymentMethods.map((p) => (
+                  <div key={p.name} className="split-row">
+                    <span className="split-label">{p.name} Orders</span>
+                    <div className="split-details">
+                      <div className="split-revenue">{p.value.toLocaleString('en-IN')} orders</div>
+                      <div className="split-count">{p.pct.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="split-chart-wrapper">
+              <DonutChart data={s.paymentMethods} formatter={(v) => v.toLocaleString('en-IN') + ' orders'} height={180} innerRadius={35} outerRadius={55} showLabels={false} />
+            </div>
+          </div>
+        </section>
+
+        {/* Top Products & Sales Trend */}
+        <section aria-label="Popular Products & Sales Trend" className="dashboard-row">
+          {/* Top Selling Products */}
+          <div className="card" style={{ flex: 1.2 }}>
+            <h3 className="section-title"><Package size={18} className="inline-icon" /> Top 5 Selling SKUs (by Revenue)</h3>
+            <BarChart
+              data={s.topSkus}
+              dataKey="value"
+              formatter={formatINR}
+              height={260}
+              colorEachBar
+            />
+          </div>
+
+          {/* Daily Trend */}
+          <div className="card" style={{ flex: 1.8 }}>
+            <h3 className="section-title"><TrendingUp size={18} className="inline-icon" /> Daily Sales Trend</h3>
+            <LineChart
+              data={s.dailyTrend}
+              dataKey="value"
+              formatter={formatINR}
+              height={260}
+            />
+          </div>
+        </section>
+
+        {/* Regional / Wholesaler billing list */}
+        <section aria-label="Billing Party Performance">
+          <div className="card">
+            <h3 className="section-title"><Building2 size={18} className="inline-icon" /> Top Billing Parties / Customer Codes</h3>
+            <div className="gstn-table-scroll">
+              <table className="gstn-table" aria-label="Billing Party rankings">
+                <thead>
+                  <tr>
+                    <th>Billing Party Code</th>
+                    <th className="text-right">Taxable Sales</th>
+                    <th className="text-right">GST Collected</th>
+                    <th className="text-right">Total Billing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.billingParties.map((party) => (
+                    <tr key={party.gstn}>
+                      <td><strong>{party.gstn}</strong></td>
+                      <td className="text-right">{formatINR(party.taxable)}</td>
+                      <td className="text-right">{formatINR(party.gst)}</td>
+                      <td className="text-right">{formatINR(party.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* SKU Performance & Unit Economics */}
+        <section aria-label="SKU Unit Economics" style={{ marginTop: 'var(--space-2)' }}>
+          <div className="card">
+            <h3 className="section-title"><Tag size={18} className="inline-icon" /> SKU Performance & Unit Economics</h3>
+            <div className="gstn-table-scroll" style={{ maxHeight: '420px', overflowY: 'auto' }}>
+              <table className="gstn-table" aria-label="SKU Unit Economics Table">
+                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr>
+                    <th>Product SKU</th>
+                    <th className="text-right">Units Sold</th>
+                    <th className="text-right">Taxable Sales</th>
+                    <th className="text-right">Avg Selling Price (ASP)</th>
+                    <th className="text-right">Shipping & COD charges</th>
+                    <th className="text-right">Charges % of Sales</th>
+                    <th className="text-right">Total Billing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.skuEconomics.map((sku) => (
+                    <tr key={sku.sku}>
+                      <td><strong>{sku.sku}</strong></td>
+                      <td className="text-right">{sku.qty.toLocaleString('en-IN')}</td>
+                      <td className="text-right">{formatINR(sku.taxableSales)}</td>
+                      <td className="text-right">{formatINR(sku.asp)}</td>
+                      <td className="text-right">{formatINR(sku.otherCharges)}</td>
+                      <td className="text-right">
+                        <span className={`badge ${sku.chargesPct > 15 ? 'badge--warning' : 'badge--success'}`} style={{
+                          padding: '2px 8px',
+                          borderRadius: 'var(--radius-full)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 600,
+                          backgroundColor: sku.chargesPct > 15 ? 'var(--color-warning-xlight)' : 'var(--color-success-xlight)',
+                          color: sku.chargesPct > 15 ? 'var(--color-warning-dark)' : 'var(--color-success-dark)',
+                          border: `1px solid ${sku.chargesPct > 15 ? 'var(--color-warning-light)' : 'var(--color-success-light)'}`
+                        }}>
+                          {sku.chargesPct.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="text-right">{formatINR(sku.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  // --- RENDER AMAZON DASHBOARD ---
   return (
     <div className="dashboard-page">
       {/* KPI Row */}
@@ -367,7 +606,130 @@ export function DashboardPage() {
 
 // ---- Computation helpers ----
 
-function computeKpis(records: ConsolidatedRecord[]) {
+function computeShopifyInsights(records: any[]) {
+  const grossSales = records.reduce((s, r) => s + (r.sales ?? 0), 0);
+  const totalSales = records.reduce((s, r) => s + (r.total ?? 0), 0);
+  const taxableAmount = records.reduce((s, r) => s + (r.taxable_amount ?? 0), 0);
+  const gstCollected = records.reduce((s, r) => s + (r.total_gst ?? 0), 0);
+  const orderCount = new Set(records.map((r) => r.invoice_no).filter(Boolean)).size;
+  const unitsSold = records.reduce((s, r) => s + (r.qty ?? 0), 0);
+  const aov = orderCount > 0 ? totalSales / orderCount : 0;
+  const shippingCharges = records.reduce((s, r) => s + (r.other_charges ?? 0) + (r.other_charges1 ?? 0), 0);
+
+  // 2. GST Breakdown (IGST vs Local CGST/SGST)
+  const totalIgst = records.reduce((s, r) => s + (r.igst ?? 0), 0);
+  const totalCgst = records.reduce((s, r) => s + (r.cgst ?? 0), 0);
+  const totalSgst = records.reduce((s, r) => s + (r.sgst ?? 0), 0);
+  const intrastateGst = totalCgst + totalSgst;
+  
+  const gstBreakdown = [
+    { name: 'Interstate (IGST)', value: totalIgst },
+    { name: 'Intrastate (CGST+SGST)', value: intrastateGst },
+  ].filter(d => d.value > 0);
+
+  // 3. Top SKUs by Revenue
+  const skuRevenueMap = new Map<string, { revenue: number; qty: number }>();
+  for (const r of records) {
+    if (!r.sku) continue;
+    const curr = skuRevenueMap.get(r.sku) ?? { revenue: 0, qty: 0 };
+    skuRevenueMap.set(r.sku, {
+      revenue: curr.revenue + (r.total ?? 0),
+      qty: curr.qty + (r.qty ?? 0)
+    });
+  }
+  const topSkus = Array.from(skuRevenueMap.entries())
+    .map(([sku, data]) => ({ name: sku, value: Math.round(data.revenue), qty: data.qty }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+
+  // 4. Payment Method Share
+  const payMap = new Map<string, number>();
+  const seenOrders = new Set<string>();
+  for (const r of records) {
+    const orderId = r.invoice_no ?? '';
+    if (seenOrders.has(orderId)) continue;
+    seenOrders.add(orderId);
+    const pm = String(r.payment_method ?? 'Unknown').trim().toUpperCase();
+    const friendlyName = pm.includes('COD') ? 'COD' : pm.includes('PREPAID') || pm.includes('ONLINE') || pm.includes('RAZORPAY') || pm.includes('UPI') ? 'Prepaid' : 'Other';
+    payMap.set(friendlyName, (payMap.get(friendlyName) ?? 0) + 1);
+  }
+  const totalOrders = seenOrders.size;
+  const paymentMethods = Array.from(payMap.entries()).map(([name, count]) => ({
+    name,
+    value: count,
+    pct: totalOrders > 0 ? (count / totalOrders) * 100 : 0
+  }));
+
+  // 5. Regional Sales (based on Billing Party Code or Entity)
+  const billingMap = new Map<string, { taxable: number; gst: number; total: number }>();
+  for (const r of records) {
+    const key = r.billing_party_code || 'B2C / Consumer';
+    const curr = billingMap.get(key) ?? { taxable: 0, gst: 0, total: 0 };
+    billingMap.set(key, {
+      taxable: curr.taxable + (r.taxable_amount ?? 0),
+      gst: curr.gst + (r.total_gst ?? 0),
+      total: curr.total + (r.total ?? 0)
+    });
+  }
+  const billingParties = Array.from(billingMap.entries())
+    .map(([gstn, val]) => ({ gstn, ...val }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10);
+
+  // 6. Daily trend
+  const dailyMap = new Map<string, number>();
+  for (const r of records) {
+    if (!r.date) continue;
+    dailyMap.set(r.date, (dailyMap.get(r.date) ?? 0) + (r.total ?? 0));
+  }
+  const dailyTrend = Array.from(dailyMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, value]) => ({
+      name: formatDateTime(date),
+      value
+    }));
+
+  // 7. SKU unit economics
+  const skuEconomicsMap = new Map<string, { qty: number; taxableSales: number; otherCharges: number; gst: number; total: number }>();
+  for (const r of records) {
+    if (!r.sku) continue;
+    const curr = skuEconomicsMap.get(r.sku) ?? { qty: 0, taxableSales: 0, otherCharges: 0, gst: 0, total: 0 };
+    skuEconomicsMap.set(r.sku, {
+      qty: curr.qty + (r.qty ?? 0),
+      taxableSales: curr.taxableSales + (r.taxable_amount ?? 0),
+      otherCharges: curr.otherCharges + (r.other_charges ?? 0) + (r.other_charges1 ?? 0),
+      gst: curr.gst + (r.total_gst ?? 0),
+      total: curr.total + (r.total ?? 0),
+    });
+  }
+  const skuEconomics = Array.from(skuEconomicsMap.entries()).map(([sku, data]) => {
+    const asp = data.qty > 0 ? data.taxableSales / data.qty : 0;
+    const chargesPct = data.taxableSales > 0 ? (data.otherCharges / data.taxableSales) * 100 : 0;
+    return {
+      sku,
+      ...data,
+      asp,
+      chargesPct,
+    };
+  }).sort((a, b) => b.taxableSales - a.taxableSales);
+
+  return { grossSales, totalSales, taxableAmount, gstCollected, orderCount, unitsSold, aov, shippingCharges, gstBreakdown, topSkus, paymentMethods, billingParties, dailyTrend, skuEconomics };
+}
+
+function computeKpis(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const totalRevenue = records.reduce((s, r) => s + (r.total ?? 0), 0);
+    const totalTaxable = records.reduce((s, r) => s + (r.taxable_amount ?? 0), 0);
+    const totalOrders = new Set(records.map((r) => r.invoice_no).filter(Boolean)).size;
+    const unitsSold = records.reduce((s, r) => s + (r.qty ?? 0), 0);
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    const netReceived = totalRevenue; 
+    const totalCharges = records.reduce((s, r) => s + (r.other_charges ?? 0) + (r.other_charges1 ?? 0), 0);
+    const totalRefunds = 0;
+    const refundRate = 0;
+    return { totalRevenue, totalTaxable, totalOrders, unitsSold, avgOrderValue, netReceived, totalCharges, totalRefunds, refundRate };
+  }
+
   const shipments = records.filter((r) => r.transaction_type === SHIPMENT);
   const refunds = records.filter((r) => r.transaction_type && REFUND_TYPES.includes(r.transaction_type));
 
@@ -388,7 +750,30 @@ function computeKpis(records: ConsolidatedRecord[]) {
   return { totalRevenue, totalTaxable, totalOrders, unitsSold, avgOrderValue, netReceived, totalCharges, totalRefunds, refundRate };
 }
 
-function computeExtraKpis(records: ConsolidatedRecord[]) {
+function computeExtraKpis(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const totalRevenue = records.reduce((s, r) => s + (r.total ?? 0), 0);
+    const unitsSold = records.reduce((s, r) => s + (r.qty ?? 0), 0);
+    const totalCharges = records.reduce((s, r) => s + (r.other_charges ?? 0) + (r.other_charges1 ?? 0), 0);
+    const avgPricePerUnit = unitsSold > 0 ? totalRevenue / unitsSold : 0;
+    const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalCharges) / totalRevenue) * 100 : 100;
+    const avgSettlementLag = 0;
+    
+    const revenueByDay = new Map<string, number>();
+    for (const r of records) {
+      if (r.date) {
+        const curr = revenueByDay.get(r.date) ?? 0;
+        revenueByDay.set(r.date, curr + (r.total ?? 0));
+      }
+    }
+    let topRevenueDay = '';
+    let topRevenue = 0;
+    for (const [day, rev] of revenueByDay.entries()) {
+      if (rev > topRevenue) { topRevenue = rev; topRevenueDay = day; }
+    }
+    return { avgPricePerUnit, grossMargin, avgSettlementLag, topRevenueDay };
+  }
+
   const shipments = records.filter((r) => r.transaction_type === SHIPMENT);
   const totalRevenue = records.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
   const grossRevenue = shipments.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
@@ -433,7 +818,40 @@ function computeExtraKpis(records: ConsolidatedRecord[]) {
   return { avgPricePerUnit, grossMargin, avgSettlementLag, topRevenueDay };
 }
 
-function computePaymentData(records: ConsolidatedRecord[]) {
+function computePaymentData(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const counts: Record<string, number> = { COD: 0, Prepaid: 0, Unknown: 0 };
+    const seenOrders = new Set<string>();
+
+    for (const r of records) {
+      const orderId = r.invoice_no ?? '';
+      if (seenOrders.has(orderId)) continue;
+      seenOrders.add(orderId);
+      
+      const pm = String(r.payment_method ?? '').toUpperCase();
+      let pt = 'Unknown';
+      if (pm.includes('COD') || pm.includes('DELIVERY')) {
+        pt = 'COD';
+      } else if (pm.includes('PREPAID') || pm.includes('ONLINE') || pm.includes('UPI') || pm.includes('CARD') || pm.includes('RAZORPAY')) {
+        pt = 'Prepaid';
+      }
+      counts[pt] = (counts[pt] ?? 0) + 1;
+    }
+
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const chartData = Object.entries(counts)
+      .filter(([, v]) => v > 0)
+      .map(([name, value]) => ({ name, value }));
+
+    const stats = Object.entries(counts).map(([label, count]) => ({
+      label: label + ' Orders',
+      count,
+      pct: total > 0 ? (count / total) * 100 : 0,
+    }));
+
+    return { chartData, stats };
+  }
+
   const counts: Record<string, number> = { COD: 0, Prepaid: 0, Unknown: 0 };
   const seenOrders = new Set<string>();
 
@@ -461,7 +879,21 @@ function computePaymentData(records: ConsolidatedRecord[]) {
   return { chartData, stats };
 }
 
-function computeFulfillmentData(records: ConsolidatedRecord[]) {
+function computeFulfillmentData(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const totalRevenue = records.reduce((s, r) => s + (r.total ?? 0), 0);
+    const totalOrders = new Set(records.map((r) => r.invoice_no).filter(Boolean)).size;
+
+    const chartData = [{ name: 'Shopify Delivery', revenue: totalRevenue }];
+    const tableData = [{
+      channel: 'Shopify Delivery',
+      orders: totalOrders,
+      revenue: totalRevenue,
+      avgCharges: 0
+    }];
+    return { chartData, tableData };
+  }
+
   const channels = ['FBA', 'Easy Ship', 'Self Ship', 'Unknown'];
   const byChannel: Record<string, { orders: Set<string>; revenue: number; charges: number }> = {};
   channels.forEach((c) => {
@@ -494,7 +926,12 @@ function computeFulfillmentData(records: ConsolidatedRecord[]) {
   return { chartData, tableData };
 }
 
-function computeTransactionData(records: ConsolidatedRecord[]) {
+function computeTransactionData(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const totalOrders = new Set(records.map((r) => r.invoice_no).filter(Boolean)).size;
+    return [{ name: 'Store Sale', count: totalOrders }];
+  }
+
   const types: Record<string, number> = {};
   const seenOrders = new Set<string>();
 
@@ -510,7 +947,38 @@ function computeTransactionData(records: ConsolidatedRecord[]) {
   return Object.entries(types).map(([name, count]) => ({ name, count }));
 }
 
-function computeGstnData(records: ConsolidatedRecord[]) {
+function computeGstnData(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const byGstn: Record<string, { taxable: number; gst: number; total: number; charges: number; totalReceived: number }> = {};
+
+    for (const r of records) {
+      const gstn = r.billing_party_code || 'Unattributed / B2C';
+      if (!byGstn[gstn]) {
+        byGstn[gstn] = { taxable: 0, gst: 0, total: 0, charges: 0, totalReceived: 0 };
+      }
+      byGstn[gstn].taxable += r.taxable_amount ?? 0;
+      byGstn[gstn].gst += r.total_gst ?? 0;
+      byGstn[gstn].total += r.total ?? 0;
+      byGstn[gstn].charges += (r.other_charges ?? 0) + (r.other_charges1 ?? 0);
+      byGstn[gstn].totalReceived += r.total ?? 0;
+    }
+
+    const rows = Object.entries(byGstn).map(([gstn, v]) => ({ gstn, ...v }));
+
+    const totals = rows.reduce(
+      (acc, r) => ({
+        taxable: acc.taxable + r.taxable,
+        gst: acc.gst + r.gst,
+        total: acc.total + r.total,
+        charges: acc.charges + r.charges,
+        totalReceived: acc.totalReceived + r.totalReceived,
+      }),
+      { taxable: 0, gst: 0, total: 0, charges: 0, totalReceived: 0 }
+    );
+
+    return { rows, totals };
+  }
+
   const byGstn: Record<string, { taxable: number; gst: number; total: number; charges: number; totalReceived: number }> = {};
 
   for (const r of records) {
@@ -557,7 +1025,26 @@ function parseDateRobust(dateStr: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function computeSettlementTrend(records: ConsolidatedRecord[]) {
+function computeSettlementTrend(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const byDate: Record<string, { revenue: number; date: string }> = {};
+
+    for (const r of records) {
+      if (!r.date) continue;
+      if (!byDate[r.date]) {
+        byDate[r.date] = { revenue: 0, date: r.date };
+      }
+      byDate[r.date].revenue += r.total ?? 0;
+    }
+
+    return Object.entries(byDate)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, v]) => ({
+        name: formatDateTime(v.date),
+        value: v.revenue,
+      }));
+  }
+
   const bySettlement: Record<string, { revenue: number; date: string }> = {};
 
   for (const r of records) {
@@ -577,8 +1064,26 @@ function computeSettlementTrend(records: ConsolidatedRecord[]) {
     }));
 }
 
-function computeDayOfWeekData(records: ConsolidatedRecord[]) {
+function computeDayOfWeekData(records: any[], platform?: string) {
   const counts = [0, 0, 0, 0, 0, 0, 0];
+
+  if (platform === 'shopify') {
+    const seenOrders = new Set<string>();
+
+    for (const r of records) {
+      const orderId = r.invoice_no ?? '';
+      if (seenOrders.has(orderId)) continue;
+      seenOrders.add(orderId);
+      
+      if (!r.date) continue;
+      const d = parseDateRobust(r.date);
+      if (d) {
+        counts[d.getDay()]++;
+      }
+    }
+
+    return DAY_NAMES.map((name, i) => ({ name, orders: counts[i] }));
+  }
 
   for (const r of records) {
     if (r.transaction_type !== SHIPMENT || !r.order_date) continue;
@@ -591,7 +1096,52 @@ function computeDayOfWeekData(records: ConsolidatedRecord[]) {
   return DAY_NAMES.map((name, i) => ({ name, orders: counts[i] }));
 }
 
-function computeTypeData(records: ConsolidatedRecord[]) {
+function computeTypeData(records: any[], platform?: string) {
+  if (platform === 'shopify') {
+    const counts = { B2C: 0, B2B: 0 };
+    const revenue = { B2C: 0, B2B: 0 };
+    const seenOrders = new Set<string>();
+
+    for (const r of records) {
+      const isB2B = r.billing_party_code && r.billing_party_code !== 'Consumer' && r.billing_party_code.trim().length === 15;
+      const key = isB2B ? 'B2B' : 'B2C';
+
+      revenue[key] += r.total ?? 0;
+      const orderId = r.invoice_no ?? '';
+      if (!seenOrders.has(orderId)) {
+        seenOrders.add(orderId);
+        counts[key]++;
+      }
+    }
+
+    const totalOrders = counts.B2C + counts.B2B;
+    const totalRevenue = revenue.B2C + revenue.B2B;
+
+    const chartData = [
+      { name: 'B2C Sales', value: revenue.B2C },
+      { name: 'B2B Sales', value: revenue.B2B },
+    ].filter((d) => d.value > 0);
+
+    const stats = [
+      {
+        label: 'B2C Sales',
+        orders: counts.B2C,
+        orderPct: totalOrders > 0 ? (counts.B2C / totalOrders) * 100 : 0,
+        revenue: revenue.B2C,
+        revenuePct: totalRevenue > 0 ? (revenue.B2C / totalRevenue) * 100 : 0,
+      },
+      {
+        label: 'B2B Sales',
+        orders: counts.B2B,
+        orderPct: totalOrders > 0 ? (counts.B2B / totalOrders) * 100 : 0,
+        revenue: revenue.B2B,
+        revenuePct: totalRevenue > 0 ? (revenue.B2B / totalRevenue) * 100 : 0,
+      },
+    ];
+
+    return { chartData, stats };
+  }
+
   const counts = { B2C: 0, B2B: 0 };
   const revenue = { B2C: 0, B2B: 0 };
   const seenOrders = new Set<string>();

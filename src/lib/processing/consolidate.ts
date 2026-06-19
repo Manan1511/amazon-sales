@@ -177,20 +177,7 @@ export function consolidate(
     }
   }
 
-  // Filter duplicates by invoice_no to enforce UNIQUE (invoice_no) in database (case-insensitive check)
-  const finalResults: ConsolidatedRowInput[] = [];
-  const seenInvoices = new Set<string>();
-
-  for (const row of results) {
-    if (row.invoice_no) {
-      const invoiceKey = row.invoice_no.toUpperCase().trim();
-      if (seenInvoices.has(invoiceKey)) {
-        continue;
-      }
-      seenInvoices.add(invoiceKey);
-    }
-    finalResults.push(row);
-  }
-
-  return finalResults;
+  // REMOVED invoice_no uniqueness filter, as multi-item orders legitimately share the same invoice number.
+  // Dropping them was causing significant revenue underreporting.
+  return results;
 }

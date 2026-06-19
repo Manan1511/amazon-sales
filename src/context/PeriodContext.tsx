@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
 import type { Period } from '../types';
-
-/** localStorage key for persisting selected period */
-const STORAGE_KEY = 'amazon_dashboard_period_id';
+import { usePlatform } from './PlatformContext';
 
 interface PeriodState {
   selectedPeriod: Period | null;
@@ -51,10 +49,40 @@ interface PeriodProviderProps {
 }
 
 export function PeriodProvider({ children }: PeriodProviderProps) {
+  const { platform } = usePlatform();
+  const STORAGE_KEY = `dashboard_period_id_${platform}`;
+
   const [state, dispatch] = useReducer(periodReducer, {
     selectedPeriod: null,
     periods: [],
   });
+
+  // Reset/restore selected period when platform changes
+  useEffect(() => {
+    const savedId = localStorage.getItem(`dashboard_period_id_${platform}`);
+    if (savedId) {
+      if (savedId.startsWith('YTD_')) {
+        const year = parseInt(savedId.split('_')[1], 10);
+        const ytdPeriod: Period = {
+          id: savedId,
+          month: 'YTD',
+          year,
+          uploaded_at: new Date().toISOString(),
+          row_count: null,
+        };
+        dispatch({ type: 'SET_PERIOD', payload: ytdPeriod });
+      } else {
+        const found = state.periods.find((p) => p.id === savedId);
+        if (found) {
+          dispatch({ type: 'SET_PERIOD', payload: found });
+        } else {
+          dispatch({ type: 'SET_PERIOD', payload: null });
+        }
+      }
+    } else {
+      dispatch({ type: 'SET_PERIOD', payload: null });
+    }
+  }, [platform, state.periods]);
 
   // Persist selected period ID to localStorage
   useEffect(() => {
@@ -63,7 +91,7 @@ export function PeriodProvider({ children }: PeriodProviderProps) {
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, [state.selectedPeriod]);
+  }, [state.selectedPeriod, STORAGE_KEY]);
 
   // Restore selected period from localStorage after periods load
   useEffect(() => {
@@ -101,7 +129,7 @@ export function PeriodProvider({ children }: PeriodProviderProps) {
         }
       }
     }
-  }, [state.periods, state.selectedPeriod]);
+  }, [state.periods, state.selectedPeriod, STORAGE_KEY]);
 
   function setSelectedPeriod(period: Period | null) {
     dispatch({ type: 'SET_PERIOD', payload: period });

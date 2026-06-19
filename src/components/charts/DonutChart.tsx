@@ -32,6 +32,7 @@ interface DonutChartProps {
   innerRadius?: number;
   outerRadius?: number;
   formatter?: (value: number) => string;
+  showLabels?: boolean;
 }
 
 interface LabelProps {
@@ -52,8 +53,8 @@ function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
   return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>
-      {`${(percent * 100).toFixed(1)}%`}
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700}>
+      {`${(percent * 100).toFixed(0)}%`}
     </text>
   );
 }
@@ -66,6 +67,7 @@ export function DonutChart({
   innerRadius = 70,
   outerRadius = 120,
   formatter,
+  showLabels = true,
 }: DonutChartProps) {
   if (loading) {
     return (
@@ -98,7 +100,7 @@ export function DonutChart({
           outerRadius={outerRadius}
           dataKey="value"
           labelLine={false}
-          label={renderCustomLabel as unknown as boolean}
+          label={showLabels ? (renderCustomLabel as unknown as boolean) : false}
           isAnimationActive={true}
           animationDuration={800}
         >
